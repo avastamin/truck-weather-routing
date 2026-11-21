@@ -10,8 +10,9 @@ recommends a route. The map shows the routes, the checkpoints and a weather heat
 trip corridor with a 0–48 hour slider.
 
 > **Status: in progress.** Planning works end to end: real HERE truck routes, Open-Meteo
-> forecasts at each checkpoint's ETA, risk levels, a recommendation, and a map with route cards
-> and checkpoint details. Next: the weather heatmap with the 0–48 hour slider, then deployment.
+> forecasts at each checkpoint's ETA, risk levels, a recommendation, a map with route cards and
+> checkpoint details, and a weather grid along the corridor with a 0–48 hour slider.
+> Next: deployment.
 
 ## Stack
 
@@ -40,14 +41,15 @@ backend/
       routing.py          routing provider adapter (HERE) -> Route, 3-route fallback
       weather.py          batched Open-Meteo requests, unit conversion, caching
       planner.py          builds a plan: routes -> checkpoints -> weather -> risk -> ranking
+      heatmap.py          weather grid around the routes for 48 hours after departure
     serializers.py        request validation
-    views.py              GET /api/health, POST /api/plan
+    views.py              GET /api/health, POST /api/plan, GET /api/heatmap/<plan_id>
   spikes/                 scripts that check the external APIs
   tests/                  pytest
 frontend/
   src/
     lib/                  API client and types, formatting, risk colours
-    components/           PlanForm, RouteCards, RouteMap
+    components/           PlanForm, RouteCards, RouteMap, HourSlider
 ```
 
 ## Setup
@@ -134,11 +136,33 @@ has its distance, duration, arrival time, rank, miles per risk level, average ri
 `path` (`[lon, lat]` pairs) and its `checkpoints`. Each checkpoint has its mile, position, ETA,
 wind, gusts, rain, snow, risk level and the rule that set it.
 
+### `GET /api/heatmap/<plan_id>`
+
+The forecast on a grid of 0.25° cells covering about 25 km either side of every route, for
+hour 0 (the departure time) to hour 48. Plans are kept for 2 hours; after that this returns 404.
+
+```json
+{
+  "start": "2026-11-22T14:00:00+00:00",
+  "hours": 48,
+  "cell_size_deg": 0.25,
+  "cells": [[-96.75, 32.75], ...],
+  "risk": [[0, 0, 1, ...], ...],
+  "wind_mph": [[12, 13, 25, ...], ...],
+  "gust_mph": [...], "rain_in_hr": [...], "snow_in_hr": [...]
+}
+```
+
+Each array has one row per cell and one column per hour. `risk` is 0 (Low) to 4 (No Travel)
+using the plan's load, or -1 where the forecast has a gap. Very long trips get a coarser grid so
+one request stays under 600 locations.
+
 Errors come back as `{"error": "..."}`, plus `"fields"` for invalid input:
 
 | Status | When                                                                        |
 | ------ | --------------------------------------------------------------------------- |
 | 400    | invalid input, departure outside the allowed window, place not found, no route |
+| 404    | heatmap requested for an unknown or expired plan                            |
 | 502    | the routing or weather service failed                                       |
 
 ## Risk rules (from the brief)

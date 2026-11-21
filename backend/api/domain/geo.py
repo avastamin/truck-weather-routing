@@ -72,3 +72,49 @@ def simplify(points: list[tuple[float, float]], tolerance_deg: float) -> list[tu
             stack.append((start, worst_i))
             stack.append((worst_i, end))
     return [p for p, k in zip(points, keep, strict=True) if k]
+
+
+def densify(path: list[tuple[float, float]], spacing_miles: float) -> list[tuple[float, float]]:
+    """Points along a (lat, lon) path no more than `spacing_miles` apart, endpoints included."""
+    if not path:
+        return []
+    out = [path[0]]
+    for a, b in zip(path, path[1:], strict=False):
+        steps = max(1, math.ceil(haversine_miles(a, b) / spacing_miles))
+        for k in range(1, steps + 1):
+            f = k / steps
+            out.append((a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f))
+    return out
+
+
+MILES_PER_DEG_LAT = 69.05
+
+
+def corridor_grid(
+    paths: list[list[tuple[float, float]]], step_deg: float, buffer_miles: float
+) -> list[tuple[float, float]]:
+    """Centres of grid cells (on multiples of `step_deg`) that touch a buffer around any path.
+
+    A cell counts if its centre is within the buffer plus half the cell's diagonal, so the
+    squares drawn on the map fully cover the buffer instead of leaving gaps along its edge.
+    """
+    cells: set[tuple[int, int]] = set()
+    for path in paths:
+        for lat, lon in densify(path, buffer_miles / 2):
+            cos_lat = max(math.cos(math.radians(lat)), 0.01)
+            half_diag = math.hypot(step_deg / 2, step_deg / 2 * cos_lat) * MILES_PER_DEG_LAT
+            reach = buffer_miles + half_diag
+            lat_span = reach / MILES_PER_DEG_LAT
+            lon_span = lat_span / cos_lat
+            for i in range(
+                math.floor((lat - lat_span) / step_deg), math.ceil((lat + lat_span) / step_deg) + 1
+            ):
+                for j in range(
+                    math.floor((lon - lon_span) / step_deg),
+                    math.ceil((lon + lon_span) / step_deg) + 1,
+                ):
+                    if (i, j) not in cells and haversine_miles(
+                        (lat, lon), (i * step_deg, j * step_deg)
+                    ) <= reach:
+                        cells.add((i, j))
+    return [(round(i * step_deg, 4), round(j * step_deg, 4)) for i, j in sorted(cells)]

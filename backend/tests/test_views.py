@@ -98,3 +98,29 @@ def test_provider_failure_is_502(client, monkeypatch):
     resp = post(client, body())
     assert resp.status_code == 502
     assert "HERE_API_KEY" in resp.json()["error"]
+
+
+class TestHeatmapEndpoint:
+    def test_unknown_or_expired_plan_is_404(self, client):
+        resp = client.get("/api/heatmap/does-not-exist")
+        assert resp.status_code == 404
+        assert "expired" in resp.json()["error"]
+
+    def test_heatmap_for_a_stored_plan_is_built_once(self, client, fakes, monkeypatch):
+        plan_id = post(client, body()).json()["plan_id"]
+        calls = []
+
+        class CountingWeather(FakeWeather):
+            def hourly(self, points, start, end):
+                calls.append(len(points))
+                return super().hourly(points, start, end)
+
+        monkeypatch.setattr(views, "OpenMeteoClient", CountingWeather)
+        first = client.get(f"/api/heatmap/{plan_id}")
+        second = client.get(f"/api/heatmap/{plan_id}")
+        assert first.status_code == 200
+        assert first.json() == second.json()
+        assert len(calls) == 1
+        data = first.json()
+        assert data["plan_id"] == plan_id
+        assert len(data["risk"]) == len(data["cells"])

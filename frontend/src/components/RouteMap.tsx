@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map, NavigationControl, Popup, useControl, type MapRef } from 'react-map-gl/maplibre'
 import { MapboxOverlay, type MapboxOverlayProps } from '@deck.gl/mapbox'
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers'
+import { PathLayer, ScatterplotLayer, SolidPolygonLayer } from '@deck.gl/layers'
 import { setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { Checkpoint, Plan, PlannedRoute } from '../lib/api'
+import type { Checkpoint, Heatmap, Plan, PlannedRoute } from '../lib/api'
 import { formatTime } from '../lib/format'
-import { RISK_LABEL, RISK_RGB, riskCss } from '../lib/risk'
+import { RISK_LABEL, RISK_LEVELS, RISK_RGB, riskCss } from '../lib/risk'
 
 // MapLibre looks for its worker next to its own file, which isn't where Vite puts it.
 // vite.config.ts copies the worker into public/.
@@ -18,9 +18,15 @@ const INITIAL_VIEW = { longitude: -98.5, latitude: 39.5, zoom: 3.6 }
 
 const SELECTED_RGB: [number, number, number] = [29, 78, 216]
 const MUTED_RGB: [number, number, number] = [148, 163, 184]
+// Low cells are faint so the corridor reads as "fine" and anything worse stands out.
+const LOW_ALPHA = 40
+const RISK_ALPHA = 150
+const NO_DATA = -1
 
 interface Props {
   plan: Plan | undefined
+  heatmap: Heatmap | undefined
+  hour: number
   selectedId: string
   onSelect: (id: string) => void
 }
@@ -29,17 +35,33 @@ interface CheckpointDatum extends Checkpoint {
   routeId: string
 }
 
+interface Cell {
+  index: number
+  polygon: [number, number][]
+}
+
+type PopupTarget =
+  | { kind: 'checkpoint'; planId: string; cp: CheckpointDatum }
+  | { kind: 'cell'; planId: string; index: number; lon: number; lat: number }
+
+function cellColor(risk: number): [number, number, number, number] {
+  if (risk === NO_DATA) return [0, 0, 0, 0]
+  const level = RISK_LEVELS[risk]
+  return [...RISK_RGB[level], level === 'low' ? LOW_ALPHA : RISK_ALPHA]
+}
+
 function DeckOverlay(props: MapboxOverlayProps) {
   const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props))
   overlay.setProps(props)
   return null
 }
 
-export function RouteMap({ plan, selectedId, onSelect }: Props) {
+export function RouteMap({ plan, heatmap, hour, selectedId, onSelect }: Props) {
   const mapRef = useRef<MapRef>(null)
   // Remember which plan the popup belongs to, so it disappears when a new plan arrives.
-  const [popupState, setPopupState] = useState<{ planId: string; cp: CheckpointDatum } | null>(null)
-  const popup = plan && popupState?.planId === plan.plan_id ? popupState.cp : null
+  const [popupState, setPopupState] = useState<PopupTarget | null>(null)
+  const popup = plan && popupState?.planId === plan.plan_id ? popupState : null
+  const grid = heatmap && plan && heatmap.plan_id === plan.plan_id ? heatmap : undefined
 
   // Zoom to the routes whenever a new plan arrives.
   useEffect(() => {
@@ -70,7 +92,41 @@ export function RouteMap({ plan, selectedId, onSelect }: Props) {
     [orderedRoutes],
   )
 
+  // Cell squares only change with a new heatmap; the slider just picks a column of `risk`.
+  const cells = useMemo<Cell[]>(() => {
+    if (!grid) return []
+    const half = grid.cell_size_deg / 2
+    return grid.cells.map(([lon, lat], index) => ({
+      index,
+      polygon: [
+        [lon - half, lat - half],
+        [lon + half, lat - half],
+        [lon + half, lat + half],
+        [lon - half, lat + half],
+      ],
+    }))
+  }, [grid])
+
   const layers = [
+    new SolidPolygonLayer<Cell>({
+      id: 'weather',
+      data: cells,
+      getPolygon: (c) => c.polygon,
+      getFillColor: (c) => cellColor(grid ? grid.risk[c.index][hour] : NO_DATA),
+      pickable: true,
+      onClick: ({ object, coordinate }) =>
+        object &&
+        plan &&
+        coordinate &&
+        setPopupState({
+          kind: 'cell',
+          planId: plan.plan_id,
+          index: object.index,
+          lon: coordinate[0],
+          lat: coordinate[1],
+        }),
+      updateTriggers: { getFillColor: [grid, hour] },
+    }),
     new PathLayer<PlannedRoute>({
       id: 'routes',
       data: orderedRoutes,
@@ -95,7 +151,8 @@ export function RouteMap({ plan, selectedId, onSelect }: Props) {
       getLineColor: [255, 255, 255],
       lineWidthMinPixels: 1.5,
       pickable: true,
-      onClick: ({ object }) => object && plan && setPopupState({ planId: plan.plan_id, cp: object }),
+      onClick: ({ object }) =>
+        object && plan && setPopupState({ kind: 'checkpoint', planId: plan.plan_id, cp: object }),
       updateTriggers: { getFillColor: selectedId, getRadius: selectedId },
     }),
   ]
@@ -106,13 +163,17 @@ export function RouteMap({ plan, selectedId, onSelect }: Props) {
       <DeckOverlay layers={layers} />
       {popup && (
         <Popup
-          longitude={popup.lon}
-          latitude={popup.lat}
+          longitude={popup.kind === 'checkpoint' ? popup.cp.lon : popup.lon}
+          latitude={popup.kind === 'checkpoint' ? popup.cp.lat : popup.lat}
           onClose={() => setPopupState(null)}
           closeOnClick={false}
           maxWidth="280px"
         >
-          <CheckpointDetails cp={popup} />
+          {popup.kind === 'checkpoint' ? (
+            <CheckpointDetails cp={popup.cp} />
+          ) : (
+            grid && <CellDetails grid={grid} index={popup.index} hour={hour} />
+          )}
         </Popup>
       )}
     </Map>
@@ -148,6 +209,38 @@ function CheckpointDetails({ cp }: { cp: CheckpointDatum }) {
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+/** Forecast for one grid cell at the slider's hour; updates as the slider moves. */
+function CellDetails({ grid, index, hour }: { grid: Heatmap; index: number; hour: number }) {
+  const risk = grid.risk[index][hour]
+  const time = new Date(new Date(grid.start).getTime() + hour * 3600 * 1000).toISOString()
+  const fmt = (v: number | null, digits: number, unit: string) =>
+    v === null ? 'no data' : `${v.toFixed(digits)} ${unit}`
+  const gust = grid.gust_mph[index][hour]
+  return (
+    <div className="checkpoint-popup">
+      <div className="checkpoint-title">Forecast at {formatTime(time)}</div>
+      {risk === NO_DATA ? (
+        <div className="checkpoint-level">No data</div>
+      ) : (
+        <div className="checkpoint-level" style={{ color: riskCss(RISK_LEVELS[risk]) }}>
+          {RISK_LABEL[RISK_LEVELS[risk]]}
+        </div>
+      )}
+      <dl>
+        <dt>Wind</dt>
+        <dd>
+          {fmt(grid.wind_mph[index][hour], 0, 'mph')}
+          {gust !== null && ` (gusts ${gust.toFixed(0)})`}
+        </dd>
+        <dt>Rain</dt>
+        <dd>{fmt(grid.rain_in_hr[index][hour], 2, 'in/hr')}</dd>
+        <dt>Snow</dt>
+        <dd>{fmt(grid.snow_in_hr[index][hour], 2, 'in/hr')}</dd>
+      </dl>
     </div>
   )
 }

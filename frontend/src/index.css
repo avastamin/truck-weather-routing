@@ -84,10 +84,28 @@ h1 { font-size: 1.15rem; margin: 0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .legend {
-  position: absolute; bottom: 24px; left: 12px; background: rgb(255 255 255 / 0.95);
+  position: absolute; top: 12px; left: 12px; background: rgb(255 255 255 / 0.95);
   padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; display: flex; gap: 10px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
 }
+
+
+.hour-slider {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px)); background: rgb(255 255 255 / 0.96);
+  padding: 10px 14px; border-radius: 8px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+  font-size: 0.85rem;
+}
+.hour-slider-title { font-weight: 600; margin-bottom: 6px; }
+.hour-slider-status { color: var(--muted); }
+.hour-slider-status.error { color: var(--danger); }
+.hour-slider-controls { display: flex; align-items: center; gap: 10px; }
+.hour-slider-controls button {
+  width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 50%;
+  background: var(--accent); color: #fff; cursor: pointer; font-size: 0.75rem;
+}
+.hour-slider-controls input[type='range'] { flex: 1; accent-color: var(--accent); }
+.hour-slider-label { min-width: 140px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* deck.gl draws on its own canvas above the map; keep popups above that canvas. */
 .maplibregl-popup { z-index: 2; }

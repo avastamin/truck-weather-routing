@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { ApiError, createPlan, type Plan, type PlanInput } from './lib/api'
+import { useCallback, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ApiError, createPlan, fetchHeatmap, type Heatmap, type Plan, type PlanInput } from './lib/api'
+import { HourSlider } from './components/HourSlider'
 import { PlanForm } from './components/PlanForm'
 import { RouteCards } from './components/RouteCards'
 import { RouteMap } from './components/RouteMap'
@@ -13,6 +14,22 @@ export default function App() {
     onSuccess: (plan) => setSelectedId(plan.recommended_route_id),
   })
   const plan = mutation.data
+
+  const heatmapQuery = useQuery<Heatmap, ApiError>({
+    queryKey: ['heatmap', plan?.plan_id],
+    queryFn: () => fetchHeatmap(plan!.plan_id),
+    enabled: Boolean(plan) && !mutation.isPending,
+    staleTime: Infinity,
+    retry: 1,
+  })
+
+  // The hour belongs to a plan, so a new plan starts back at departure.
+  const [hourState, setHourState] = useState({ planId: '', hour: 0 })
+  const hour = plan && hourState.planId === plan.plan_id ? hourState.hour : 0
+  const setHour = useCallback(
+    (h: number) => plan && setHourState({ planId: plan.plan_id, hour: h }),
+    [plan],
+  )
 
   return (
     <div className="layout">
@@ -36,7 +53,23 @@ export default function App() {
         )}
       </aside>
       <main className="map-area">
-        <RouteMap plan={plan} selectedId={selectedId} onSelect={setSelectedId} />
+        <RouteMap
+          plan={mutation.isPending ? undefined : plan}
+          heatmap={heatmapQuery.data}
+          hour={hour}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+        {plan && !mutation.isPending && (
+          <HourSlider
+            start={plan.departure}
+            hours={heatmapQuery.data?.hours ?? 48}
+            hour={hour}
+            onChange={setHour}
+            status={heatmapQuery.isError ? 'error' : heatmapQuery.data ? 'ready' : 'loading'}
+            error={heatmapQuery.error?.message}
+          />
+        )}
         {mutation.isPending && (
           <div className="map-loading" role="status">
             <span className="spinner" /> Fetching routes and forecasts…

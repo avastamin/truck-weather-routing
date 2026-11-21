@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from django.core.cache import cache
 from django.utils import timezone
@@ -7,6 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from api.serializers import PlanInputSerializer
+from api.services.heatmap import build_heatmap
 from api.services.planner import PlanError, PlanRequest, build_plan
 from api.services.routing import (
     LocationNotFoundError,
@@ -21,6 +23,10 @@ PLAN_TTL_S = 2 * 60 * 60  # the heatmap endpoint reads the plan back for this lo
 
 def plan_cache_key(plan_id: str) -> str:
     return f"plan:{plan_id}"
+
+
+def heatmap_cache_key(plan_id: str) -> str:
+    return f"heatmap:{plan_id}"
 
 
 def error(message: str, code: int, **extra) -> Response:
@@ -57,3 +63,28 @@ def plan(request):
         PLAN_TTL_S,
     )
     return Response({"plan_id": plan_id, **result})
+
+
+@api_view(["GET"])
+def heatmap(request, plan_id: str):
+    cached = cache.get(heatmap_cache_key(plan_id))
+    if cached is not None:
+        return Response(cached)
+    stored = cache.get(plan_cache_key(plan_id))
+    if stored is None:
+        return error("This plan has expired. Plan the trip again.", status.HTTP_404_NOT_FOUND)
+
+    paths = [[(lat, lon) for lon, lat in path] for path in stored["paths"]]
+    try:
+        result = build_heatmap(
+            paths,
+            datetime.fromisoformat(stored["departure"]),
+            stored["load_lb"],
+            OpenMeteoClient(),
+        )
+    except WeatherError as exc:
+        return error(str(exc), status.HTTP_502_BAD_GATEWAY)
+
+    result = {"plan_id": plan_id, **result}
+    cache.set(heatmap_cache_key(plan_id), result, PLAN_TTL_S)
+    return Response(result)

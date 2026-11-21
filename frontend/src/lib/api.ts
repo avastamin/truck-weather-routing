@@ -47,6 +47,20 @@ export interface Plan {
   routes: PlannedRoute[]
 }
 
+/** Weather grid for hours 0..48 after departure. Rows are cells, columns are hours. */
+export interface Heatmap {
+  plan_id: string
+  start: string
+  hours: number
+  cell_size_deg: number
+  cells: [number, number][] // [lon, lat] cell centres
+  risk: number[][] // 0 Low .. 4 No Travel, -1 no data
+  wind_mph: (number | null)[][]
+  gust_mph: (number | null)[][]
+  rain_in_hr: (number | null)[][]
+  snow_in_hr: (number | null)[][]
+}
+
 export interface PlanInput {
   origin: string
   destination: string
@@ -66,14 +80,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function createPlan(input: PlanInput): Promise<Plan> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let resp: Response
   try {
-    resp = await fetch(`${API_BASE}/plan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    })
+    resp = await fetch(`${API_BASE}${path}`, init)
   } catch {
     throw new ApiError('Could not reach the server. Check your connection and try again.')
   }
@@ -81,5 +91,17 @@ export async function createPlan(input: PlanInput): Promise<Plan> {
   if (!resp.ok) {
     throw new ApiError(body?.error ?? `Request failed (HTTP ${resp.status}).`, body?.fields)
   }
-  return body as Plan
+  return body as T
+}
+
+export function createPlan(input: PlanInput): Promise<Plan> {
+  return request<Plan>('/plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function fetchHeatmap(planId: string): Promise<Heatmap> {
+  return request<Heatmap>(`/heatmap/${planId}`)
 }

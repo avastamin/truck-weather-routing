@@ -1,6 +1,6 @@
 import pytest
 
-from api.domain.geo import haversine_miles, offset_midpoint, simplify
+from api.domain.geo import corridor_grid, densify, haversine_miles, offset_midpoint, simplify
 
 
 def test_haversine_one_degree_of_latitude():
@@ -40,3 +40,43 @@ class TestSimplify:
 
     def test_short_paths_unchanged(self):
         assert simplify([(1.0, 2.0), (3.0, 4.0)], 1e-4) == [(1.0, 2.0), (3.0, 4.0)]
+
+
+class TestDensify:
+    def test_spacing_is_respected_and_endpoints_kept(self):
+        path = [(35.0, -100.0), (35.0, -99.0)]  # ~57 miles
+        points = densify(path, 10)
+        assert points[0] == path[0] and points[-1] == path[-1]
+        gaps = [haversine_miles(a, b) for a, b in zip(points, points[1:], strict=False)]
+        assert max(gaps) <= 10
+
+    def test_empty_path(self):
+        assert densify([], 5) == []
+
+
+class TestCorridorGrid:
+    PATH = [(35.0, -101.0), (35.0, -99.0)]  # east-west, ~113 miles
+
+    def test_cells_follow_the_route(self):
+        cells = corridor_grid([self.PATH], 0.25, 15)
+        lats = {lat for lat, _ in cells}
+        lons = {lon for _, lon in cells}
+        assert 35.0 in lats
+        assert min(lons) <= -101.0 and max(lons) >= -99.0
+        # 15 mi buffer + half a cell: never more than ~0.5 deg of latitude away
+        assert all(abs(lat - 35.0) <= 0.5 for lat in lats)
+
+    def test_cell_centres_sit_on_the_grid(self):
+        for lat, lon in corridor_grid([self.PATH], 0.25, 15):
+            assert (lat / 0.25).is_integer() and (lon / 0.25).is_integer()
+
+    def test_every_route_point_is_inside_a_cell(self):
+        cells = set(corridor_grid([self.PATH], 0.25, 15))
+        for lat, lon in densify(self.PATH, 5):
+            centre = (round(round(lat / 0.25) * 0.25, 4), round(round(lon / 0.25) * 0.25, 4))
+            assert centre in cells
+
+    def test_overlapping_routes_share_cells(self):
+        one = corridor_grid([self.PATH], 0.25, 15)
+        two = corridor_grid([self.PATH, self.PATH], 0.25, 15)
+        assert one == two
