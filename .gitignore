@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+db.sqlite3
+
+# Node
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Spike output
+backend/spikes/output/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local planning notes (not part of the submission)
+PLAN.md
+CLAUDE.md
