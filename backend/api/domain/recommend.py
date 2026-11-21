@@ -12,10 +12,9 @@ Miles are compared rounded to 0.1 mi and average risk to 0.01.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
 from api.domain.risk import RiskLevel
 
@@ -108,13 +107,19 @@ def _fmt_duration(seconds: float) -> str:
 def _reason(best: RouteRisk, other: RouteRisk) -> str:
     """Explain the first ranking criterion on which the best route beats the runner-up."""
     vs = f"Route {other.route_id}"
+
+    def miles_vs(level: RiskLevel, name: str) -> str:
+        best_m = _fmt_miles(best.miles_by_level[level])
+        other_m = _fmt_miles(other.miles_by_level[level])
+        return f"{best_m} {name} miles vs {other_m} on {vs}"
+
     nt, sev, high = RiskLevel.NO_TRAVEL, RiskLevel.SEVERE, RiskLevel.HIGH
     if _miles(best, nt) != _miles(other, nt) or best.has_no_travel != other.has_no_travel:
-        return f"{_fmt_miles(best.miles_by_level[nt])} No Travel miles vs {_fmt_miles(other.miles_by_level[nt])} on {vs}"
+        return miles_vs(nt, "No Travel")
     if _miles(best, sev) != _miles(other, sev):
-        return f"{_fmt_miles(best.miles_by_level[sev])} severe miles vs {_fmt_miles(other.miles_by_level[sev])} on {vs}"
+        return miles_vs(sev, "severe")
     if _miles(best, high) != _miles(other, high):
-        return f"Same severe miles; {_fmt_miles(best.miles_by_level[high])} high miles vs {_fmt_miles(other.miles_by_level[high])} on {vs}"
+        return f"Same severe miles; {miles_vs(high, 'high')}"
     best_avg = round(best.avg_risk, AVG_RISK_DECIMALS)
     other_avg = round(other.avg_risk, AVG_RISK_DECIMALS)
     if best_avg != other_avg:

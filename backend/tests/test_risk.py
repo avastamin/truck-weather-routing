@@ -25,11 +25,16 @@ LIGHT = 10_000  # lb, below every load rule
 @pytest.mark.parametrize(
     "mph, expected",
     [
-        (0, L), (24.9, L),
-        (25, M), (34.9, M),
-        (35, H), (44.9, H),
-        (45, S), (54.9, S),
-        (55, NT), (80, NT),
+        (0, L),
+        (24.9, L),
+        (25, M),
+        (34.9, M),
+        (35, H),
+        (44.9, H),
+        (45, S),
+        (54.9, S),
+        (55, NT),
+        (80, NT),
     ],
 )
 def test_wind_thresholds_light_load(mph, expected):
@@ -39,11 +44,16 @@ def test_wind_thresholds_light_load(mph, expected):
 @pytest.mark.parametrize(
     "in_hr, expected",
     [
-        (0, L), (0.099, L),
-        (0.10, M), (0.249, M),
-        (0.25, H), (0.499, H),
-        (0.50, S), (1.00, S),  # "0.50–1.00" is Severe; No Travel is strictly "> 1.00"
-        (1.001, NT), (2.5, NT),
+        (0, L),
+        (0.099, L),
+        (0.10, M),
+        (0.249, M),
+        (0.25, H),
+        (0.499, H),
+        (0.50, S),
+        (1.00, S),  # "0.50–1.00" is Severe; No Travel is strictly "> 1.00"
+        (1.001, NT),
+        (2.5, NT),
     ],
 )
 def test_rain_thresholds(in_hr, expected):
@@ -53,11 +63,16 @@ def test_rain_thresholds(in_hr, expected):
 @pytest.mark.parametrize(
     "in_hr, expected",
     [
-        (0, L), (0.49, L),
-        (0.5, M), (0.99, M),
-        (1.0, H), (1.99, H),
-        (2.0, S), (3.0, S),  # No Travel is strictly "> 3.0"
-        (3.01, NT), (6, NT),
+        (0, L),
+        (0.49, L),
+        (0.5, M),
+        (0.99, M),
+        (1.0, H),
+        (1.99, H),
+        (2.0, S),
+        (3.0, S),  # No Travel is strictly "> 3.0"
+        (3.01, NT),
+        (6, NT),
     ],
 )
 def test_snow_thresholds(in_hr, expected):

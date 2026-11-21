@@ -9,9 +9,9 @@ checkpoint for the time the truck is expected to reach it, classifies the weathe
 recommends a route. The map shows the routes, the checkpoints and a weather heatmap along the
 trip corridor with a 0–48 hour slider.
 
-> **Status: in progress.** The routing adapter (HERE) and the core logic are written and tested:
-> risk classification, checkpoint sampling with ETAs, forecast interpolation and route ranking.
-> Next: the API endpoints, the map UI and the heatmap.
+> **Status: in progress.** Planning works end to end: real HERE truck routes, Open-Meteo
+> forecasts at each checkpoint's ETA, risk levels, a recommendation, and a map with route cards
+> and checkpoint details. Next: the weather heatmap with the 0–48 hour slider, then deployment.
 
 ## Stack
 
@@ -31,17 +31,23 @@ backend/
   api/
     domain/               pure logic, no Django imports
       types.py            Route and GeoPoint data shapes
-      geo.py              distance helpers
+      geo.py              distance, line simplification, via-point offsets
       risk.py             thresholds and load rules -> risk level per checkpoint
       sampling.py         checkpoints every N miles, miles covered, ETA at each
       forecast.py         unit conversion, value at an exact time between forecast hours
       recommend.py        miles per risk level, ranking, recommendation reason
     services/
-      routing.py          routing provider adapter (HERE) -> Route
-    views.py              API endpoints (currently GET /api/health)
+      routing.py          routing provider adapter (HERE) -> Route, 3-route fallback
+      weather.py          batched Open-Meteo requests, unit conversion, caching
+      planner.py          builds a plan: routes -> checkpoints -> weather -> risk -> ranking
+    serializers.py        request validation
+    views.py              GET /api/health, POST /api/plan
   spikes/                 scripts that check the external APIs
   tests/                  pytest
-frontend/                 Vite + React + TypeScript app
+frontend/
+  src/
+    lib/                  API client and types, formatting, risk colours
+    components/           PlanForm, RouteCards, RouteMap
 ```
 
 ## Setup
@@ -54,9 +60,9 @@ Requirements: Python 3.11+, Node 20+.
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # requirements.txt alone for production
 cp .env.example .env        # then set DJANGO_SECRET_KEY and HERE_API_KEY
-python manage.py runserver  # http://localhost:8000/api/health
+python manage.py runserver  # http://127.0.0.1:8000/api/health
 ```
 
 Environment variables (see `backend/.env.example`):
@@ -76,14 +82,21 @@ Environment variables (see `backend/.env.example`):
 ```bash
 cd frontend
 npm install
-cp .env.example .env        # VITE_API_BASE_URL, defaults to http://localhost:8000/api
+cp .env.example .env        # VITE_API_BASE_URL, defaults to http://127.0.0.1:8000/api
 npm run dev                 # http://localhost:5173
 ```
 
 ### Tests
 
 ```bash
-cd backend && pytest
+cd backend
+pytest            # tests
+ruff check .      # lint
+ruff format .     # format
+
+cd frontend
+npm run lint
+npm run build     # type-checks with tsc, then bundles
 ```
 
 ### API spikes
@@ -98,6 +111,35 @@ python -m spikes.here_spike        # needs HERE_API_KEY; default trip Dallas, TX
 The HERE spike reports how many routes come back, whether per-segment durations are present,
 and whether the load weight changes the routes. Raw responses are saved to
 `backend/spikes/output/` (gitignored).
+
+## API
+
+### `POST /api/plan`
+
+```json
+{
+  "origin": "Dallas, TX",
+  "destination": "Denver, CO",
+  "departure": "2026-11-22T08:00:00-06:00",
+  "load_lb": 40000,
+  "interval_miles": 25
+}
+```
+
+`departure` must include a timezone offset. `interval_miles` is 10, 25 or 50 (default 25).
+
+The response has the resolved origin and destination, `recommended_route_id`, a `reason`, a
+`no_travel_warning` flag, a `plan_id` (used by the heatmap) and up to 3 `routes`. Each route
+has its distance, duration, arrival time, rank, miles per risk level, average risk, a simplified
+`path` (`[lon, lat]` pairs) and its `checkpoints`. Each checkpoint has its mile, position, ETA,
+wind, gusts, rain, snow, risk level and the rule that set it.
+
+Errors come back as `{"error": "..."}`, plus `"fields"` for invalid input:
+
+| Status | When                                                                        |
+| ------ | --------------------------------------------------------------------------- |
+| 400    | invalid input, departure outside the allowed window, place not found, no route |
+| 502    | the routing or weather service failed                                       |
 
 ## Risk rules (from the brief)
 
@@ -151,5 +193,11 @@ Where the brief is ambiguous, the app does the following:
 14. **Rounding before ranking**: risk miles are rounded to 0.1 mi and average risk to 0.01
     before comparing, so near-equal values count as ties and the later tie-breakers apply.
     If routes are still tied after travel time, the routing provider's order decides.
-15. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
+15. **Load weight** must be between 1 and 200,000 lb. That's well above the 80,000 lb federal
+    limit, to allow permitted heavy loads.
+16. **Place names**: if HERE's best match for a place is weak (match score below 0.7), the app
+    asks for a more specific name instead of silently routing from a different town. The
+    matched names are shown above the route cards, so an ambiguous name like "Springfield"
+    is visible.
+17. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
     response also includes raw wind, gust, rain and snow values per hour for the popup.

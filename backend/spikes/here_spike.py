@@ -16,7 +16,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -32,15 +32,15 @@ def summarize(label: str, raw: dict) -> None:
     print(f"\n== {label}: {len(routes)} route(s) ==")
     if len(routes) < 3:
         print("  !! fewer than 3 routes -> perpendicular via-point fallback needed")
-    for raw_route, route in zip(raw["routes"], routes):
+    for raw_route, route in zip(raw["routes"], routes, strict=True):
         sections = raw_route["sections"]
         spans = sum(len(s.get("spans") or []) for s in sections)
-        spans_ok = all(
-            (s.get("spans") or [{}])[0].get("duration") is not None for s in sections
-        )
+        spans_ok = all((s.get("spans") or [{}])[0].get("duration") is not None for s in sections)
         summary_s = sum(s["summary"]["duration"] for s in sections)
         summary_m = sum(s["summary"]["length"] for s in sections)
-        monotonic = all(b >= a for a, b in zip(route.cum_seconds, route.cum_seconds[1:]))
+        monotonic = all(
+            b >= a for a, b in zip(route.cum_seconds, route.cum_seconds[1:], strict=False)
+        )
         print(
             f"  Route {route.id}: {route.distance_miles:7.1f} mi  "
             f"{route.duration_seconds / 3600:5.2f} h  "
@@ -66,7 +66,7 @@ def main() -> int:
         return 1
 
     provider = HereRoutingProvider(key)
-    departure = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(microsecond=0)
+    departure = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
     try:
         origin = provider.geocode(args.origin)
         destination = provider.geocode(args.destination)

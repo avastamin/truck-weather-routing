@@ -46,7 +46,7 @@ def coverage_miles(miles: list[float]) -> list[float]:
     """Miles each checkpoint represents: half the gap to each neighbour."""
     if len(miles) < 2:
         raise ValueError("need at least 2 checkpoints")
-    gaps = [b - a for a, b in zip(miles, miles[1:])]
+    gaps = [b - a for a, b in zip(miles, miles[1:], strict=False)]
     return [
         (gaps[i - 1] if i > 0 else 0.0) / 2 + (gaps[i] if i < len(gaps) else 0.0) / 2
         for i in range(len(miles))
@@ -73,7 +73,7 @@ def sample_route(route: Route, interval_miles: float, departure: datetime) -> li
         raise ValueError("departure must be timezone-aware")
     miles = checkpoint_miles(route.distance_miles, interval_miles)
     checkpoints = []
-    for mile, covers in zip(miles, coverage_miles(miles)):
+    for mile, covers in zip(miles, coverage_miles(miles), strict=True):
         lat, lon, seconds = point_at_mile(route, mile)
         checkpoints.append(
             Checkpoint(

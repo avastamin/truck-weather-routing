@@ -47,7 +47,9 @@ class RiskLevel(IntEnum):
 @dataclass(frozen=True)
 class Assessment:
     level: RiskLevel
-    triggered_by: tuple[str, ...]  # factors at the worst level ("wind", "rain", "snow"); empty if Low
+    triggered_by: tuple[
+        str, ...
+    ]  # factors at the worst level ("wind", "rain", "snow"); empty if Low
     reasons: tuple[str, ...]  # one human-readable sentence per triggering factor
 
 

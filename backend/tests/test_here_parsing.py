@@ -4,7 +4,12 @@ import flexpolyline
 import pytest
 
 from api.domain.geo import METERS_PER_MILE
-from api.services.routing import build_cumulative, parse_here_routes
+from api.services.routing import (
+    HereRoutingProvider,
+    LocationNotFoundError,
+    build_cumulative,
+    parse_here_routes,
+)
 
 # Four points due north along a meridian, roughly equal spacing.
 POINTS = [(32.0, -97.0), (32.1, -97.0), (32.2, -97.0), (32.3, -97.0)]
@@ -39,7 +44,7 @@ def test_missing_spans_fall_back_to_section_totals():
     cum_m, cum_s = build_cumulative(POINTS, [], 3000, 300)
     assert cum_m[-1] == pytest.approx(3000)
     assert cum_s[-1] == pytest.approx(300)
-    assert all(b >= a for a, b in zip(cum_s, cum_s[1:]))
+    assert all(b >= a for a, b in zip(cum_s, cum_s[1:], strict=False))
 
 
 def test_parse_concatenates_sections_without_duplicate_boundary():
@@ -61,3 +66,41 @@ def test_parse_concatenates_sections_without_duplicate_boundary():
 
 def test_parse_empty_response():
     assert parse_here_routes({"routes": []}) == []
+
+
+class FakeGeocodeSession:
+    def __init__(self, items):
+        self.items = items
+
+    def get(self, url, params, timeout):
+        class Resp:
+            status_code = 200
+
+            def json(_):
+                return {"items": self.items}
+
+        return Resp()
+
+
+def geocode_item(title, score):
+    return {
+        "title": title,
+        "position": {"lat": 32.78, "lng": -96.8},
+        "scoring": {"queryScore": score},
+    }
+
+
+class TestGeocode:
+    def test_good_match_is_returned_with_its_label(self):
+        session = FakeGeocodeSession([geocode_item("Dallas, TX, United States", 0.99)])
+        point = HereRoutingProvider("key", session).geocode("dallas tx")
+        assert (point.lat, point.lon, point.label) == (32.78, -96.8, "Dallas, TX, United States")
+
+    def test_weak_match_is_rejected_with_the_closest_guess(self):
+        session = FakeGeocodeSession([geocode_item("Nowhere, Fort Cobb, OK, United States", 0.54)])
+        with pytest.raises(LocationNotFoundError, match="closest: Nowhere, Fort Cobb"):
+            HereRoutingProvider("key", session).geocode("Qwxzzy Nowhere")
+
+    def test_no_match(self):
+        with pytest.raises(LocationNotFoundError):
+            HereRoutingProvider("key", FakeGeocodeSession([])).geocode("asdfgh")

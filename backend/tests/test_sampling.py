@@ -1,13 +1,13 @@
 """Checkpoint placement, miles covered per checkpoint, and position/ETA interpolation."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from api.domain.sampling import checkpoint_miles, coverage_miles, point_at_mile, sample_route
 from api.domain.types import Route
 
-DEPART = datetime(2026, 11, 22, 8, 0, tzinfo=timezone.utc)
+DEPART = datetime(2026, 11, 22, 8, 0, tzinfo=UTC)
 
 
 def straight_route(miles, hours, vertices=11):
@@ -34,7 +34,7 @@ class TestCheckpointMiles:
     @pytest.mark.parametrize("interval", [10, 25, 50])
     def test_spacing_equals_interval_except_last(self, interval):
         miles = checkpoint_miles(237.4, interval)
-        gaps = [b - a for a, b in zip(miles, miles[1:])]
+        gaps = [b - a for a, b in zip(miles, miles[1:], strict=False)]
         assert all(g == pytest.approx(interval) for g in gaps[:-1])
         assert 0 < gaps[-1] <= interval
         assert miles[0] == 0 and miles[-1] == 237.4
