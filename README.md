@@ -35,6 +35,7 @@ backend/
       geo.py              distance, line simplification, via-point offsets
       risk.py             thresholds and load rules -> risk level per checkpoint
       sampling.py         checkpoints every N miles, miles covered, ETA at each
+      hours_of_service.py driver breaks and rests built into the ETAs
       forecast.py         unit conversion, value at an exact time between forecast hours
       recommend.py        miles per risk level, ranking, recommendation reason
     services/
@@ -132,7 +133,9 @@ and whether the load weight changes the routes. Raw responses are saved to
 
 The response has the resolved origin and destination, `recommended_route_id`, a `reason`, a
 `no_travel_warning` flag, a `plan_id` (used by the heatmap) and up to 3 `routes`. Each route
-has its distance, duration, arrival time, rank, miles per risk level, average risk, a simplified
+has its distance, door-to-door and driving time, arrival time, rank, its driver breaks and
+rests (`rest_stops`, each with mile, position, arrive and leave times), miles per risk level,
+average risk, a simplified
 `path` (`[lon, lat]` pairs) and its `checkpoints`. Each checkpoint has its mile, position, ETA,
 wind, gusts, rain, snow, risk level and the rule that set it.
 
@@ -223,11 +226,18 @@ Where the brief is ambiguous, the app does the following:
     asks for a more specific name instead of silently routing from a different town. The
     matched names are shown above the route cards, so an ambiguous name like "Springfield"
     is visible.
-17. **Times** are shown in the browser's timezone with the zone name (e.g. "Sat 14:00 CST"), and
+17. **Driver breaks and rests** are built into every ETA, using simplified US hours-of-service
+    rules: a 30-minute break after 8 hours of driving and a 10-hour rest after 11 hours,
+    repeating on multi-day trips. The driver is assumed to start fresh; weekly (60/70-hour)
+    limits aren't modelled. Rest time counts toward travel time when ranking routes, so a
+    route that needs one more rest can lose to a slightly longer drive. The stops are worked
+    out by the app rather than by HERE, because HERE returns only one route when a driver
+    schedule is set and the brief asks for three.
+18. **Times** are shown in the browser's timezone with the zone name (e.g. "Sat 14:00 CST"), and
     the departure field is read in that same timezone.
-18. **Fewer than 3 routes**: if HERE returns fewer than 3, the app tries via points to either
+19. **Fewer than 3 routes**: if HERE returns fewer than 3, the app tries via points to either
     side of the trip. A result only counts as a new route if less than 70% of it runs on roads
     the existing routes already use; otherwise it's the same road with a detour. Trips with only
     one sensible road (e.g. Key West → Marathon) show a single route and say so.
-19. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
+20. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
     response also includes raw wind, gust, rain and snow values per hour for the popup.

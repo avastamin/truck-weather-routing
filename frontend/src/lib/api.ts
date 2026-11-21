@@ -21,12 +21,24 @@ export interface Checkpoint {
   reasons: string[]
 }
 
+export interface RestStop {
+  kind: 'break' | 'rest'
+  mile: number
+  lat: number
+  lon: number
+  arrive: string
+  leave: string
+  duration_seconds: number
+}
+
 export interface PlannedRoute {
   id: string
   rank: number
   distance_miles: number
-  duration_seconds: number
+  duration_seconds: number // door to door, including breaks and rests
+  driving_seconds: number
   arrival: string
+  rest_stops: RestStop[]
   miles_by_level: Record<RiskLevel, number>
   avg_risk: number
   has_no_travel: boolean

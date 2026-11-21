@@ -65,12 +65,15 @@ h1 { font-size: 1.15rem; margin: 0; }
 .badge-recommended { background: #dbeafe; color: var(--accent); }
 .badge-danger { background: #f3e8ff; color: #6a1b9a; }
 .route-reason { margin: 0; font-size: 0.85rem; color: var(--accent); }
-.route-stats { display: flex; gap: 12px; font-size: 0.875rem; }
+.route-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.875rem; }
+.route-stats span { white-space: nowrap; }
 .risk-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--border); }
 .risk-miles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; font-size: 0.8rem; }
 .risk-miles li.zero { color: #94a3b8; }
 .route-avg { font-size: 0.8rem; color: var(--muted); }
+.route-stops { font-size: 0.8rem; color: var(--muted); }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.stop-swatch { background: #0f172a; border-radius: 50%; box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px #0f172a; }
 
 .map-area { position: relative; flex: 1; }
 .map-loading {

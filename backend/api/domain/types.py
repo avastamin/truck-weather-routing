@@ -13,6 +13,18 @@ class GeoPoint:
 
 
 @dataclass(frozen=True)
+class RestStop:
+    """A driver break or rest along a route. Times are seconds after departure."""
+
+    kind: str  # "break" (30 min) or "rest" (10 h)
+    mile: float
+    lat: float
+    lon: float
+    arrive_seconds: float
+    duration_seconds: float
+
+
+@dataclass(frozen=True)
 class Route:
     """A route as a polyline with cumulative distance and travel time at every vertex.
 
@@ -23,7 +35,8 @@ class Route:
     id: str
     coords: list[tuple[float, float]]  # (lat, lon)
     cum_miles: list[float]
-    cum_seconds: list[float]
+    cum_seconds: list[float]  # includes time spent at rest stops
+    rest_stops: tuple[RestStop, ...] = ()
 
     def __post_init__(self) -> None:
         n = len(self.coords)
@@ -36,4 +49,9 @@ class Route:
 
     @property
     def duration_seconds(self) -> float:
+        """Door-to-door time, including any breaks and rests."""
         return self.cum_seconds[-1]
+
+    @property
+    def driving_seconds(self) -> float:
+        return self.duration_seconds - sum(s.duration_seconds for s in self.rest_stops)

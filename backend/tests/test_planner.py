@@ -182,3 +182,33 @@ class TestBuildPlan:
 
         with pytest.raises(PlanError, match="missing"):
             build_plan(request(), FakeProvider([east_route(60, 1)]), GappyWeather(), NOW)
+
+
+class TestRestStops:
+    def test_long_route_etas_include_break_and_rest(self):
+        # 12 h of driving: 30 min break after 8 h, 10 h rest after 11 h.
+        provider = FakeProvider([east_route(600, 12)])
+        route = build_plan(request(interval_miles=50), provider, FakeWeather(), NOW)["routes"][0]
+        assert route["driving_seconds"] == 12 * 3600
+        assert route["duration_seconds"] == 12 * 3600 + 30 * 60 + 10 * 3600
+        assert [s["kind"] for s in route["rest_stops"]] == ["break", "rest"]
+        rest = route["rest_stops"][1]
+        assert rest["mile"] == 550
+        assert rest["arrive"] == (DEPART + timedelta(hours=11, minutes=30)).isoformat()
+        assert rest["leave"] == (DEPART + timedelta(hours=21, minutes=30)).isoformat()
+        last = route["checkpoints"][-1]
+        assert last["eta"] == (DEPART + timedelta(hours=22, minutes=30)).isoformat()
+
+    def test_rest_time_counts_toward_travel_time_in_ranking(self):
+        # Route A drives only 12 minutes longer than B, but that pushes it past 11 hours of
+        # driving, so it needs a 10-hour rest and arrives about 10 hours later.
+        needs_rest = east_route(480, 11.1)
+        no_rest = east_route(500, 10.9, lat=35.5)
+        plan = build_plan(request(), FakeProvider([needs_rest, no_rest]), FakeWeather(), NOW)
+        assert plan["recommended_route_id"] == "B"
+        assert plan["reason"] == "Same weather risk; 10 h 12 min faster than Route A"
+
+    def test_short_route_has_no_stops(self):
+        route = build_plan(request(), FakeProvider([east_route(60, 1.2)]), FakeWeather(), NOW)
+        assert route["routes"][0]["rest_stops"] == []
+        assert route["routes"][0]["driving_seconds"] == route["routes"][0]["duration_seconds"]

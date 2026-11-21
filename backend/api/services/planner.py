@@ -12,6 +12,7 @@ from typing import Any
 
 from api.domain.forecast import ForecastRangeError, interpolate_at
 from api.domain.geo import haversine_miles, simplify
+from api.domain.hours_of_service import add_rest_stops
 from api.domain.recommend import RouteRisk, aggregate, recommend
 from api.domain.risk import Assessment, RiskLevel, assess
 from api.domain.sampling import Checkpoint, sample_route
@@ -65,6 +66,8 @@ def build_plan(
         raise PlanError("Origin and destination are the same place.")
 
     routes = get_routes(provider, origin, destination, req.departure, req.load_lb)
+    # Breaks and rests change when the truck reaches each checkpoint, and so the weather it meets.
+    routes = [add_rest_stops(r) for r in routes]
     latest_arrival = req.departure + timedelta(seconds=max(r.duration_seconds for r in routes))
     if hour_ceil(latest_arrival) > forecast_end(now):
         raise PlanError(
@@ -146,7 +149,22 @@ def _route_payload(
         "id": route.id,
         "distance_miles": round(route.distance_miles, 1),
         "duration_seconds": round(route.duration_seconds),
+        "driving_seconds": round(route.driving_seconds),
         "arrival": (departure + timedelta(seconds=route.duration_seconds)).isoformat(),
+        "rest_stops": [
+            {
+                "kind": stop.kind,
+                "mile": round(stop.mile, 1),
+                "lat": round(stop.lat, 5),
+                "lon": round(stop.lon, 5),
+                "arrive": (departure + timedelta(seconds=stop.arrive_seconds)).isoformat(),
+                "leave": (
+                    departure + timedelta(seconds=stop.arrive_seconds + stop.duration_seconds)
+                ).isoformat(),
+                "duration_seconds": round(stop.duration_seconds),
+            }
+            for stop in route.rest_stops
+        ],
         "miles_by_level": {_level_key(lvl): round(m, 1) for lvl, m in risk.miles_by_level.items()},
         "avg_risk": round(risk.avg_risk, 2),
         "has_no_travel": risk.has_no_travel,

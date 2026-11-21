@@ -5,8 +5,8 @@ import { MapboxOverlay, type MapboxOverlayProps } from '@deck.gl/mapbox'
 import { PathLayer, ScatterplotLayer, SolidPolygonLayer } from '@deck.gl/layers'
 import { setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { Checkpoint, Heatmap, Plan, PlannedRoute } from '../lib/api'
-import { formatDuration, formatMiles, formatTime } from '../lib/format'
+import type { Checkpoint, Heatmap, Plan, PlannedRoute, RestStop } from '../lib/api'
+import { describeStops, formatDuration, formatMiles, formatTime } from '../lib/format'
 import { RISK_LABEL, RISK_LEVELS, RISK_RGB, riskCss } from '../lib/risk'
 
 // MapLibre looks for its worker next to its own file, which isn't where Vite puts it.
@@ -36,6 +36,10 @@ interface CheckpointDatum extends Checkpoint {
   routeId: string
 }
 
+interface RestStopDatum extends RestStop {
+  routeId: string
+}
+
 interface Cell {
   index: number
   polygon: [number, number][]
@@ -61,9 +65,21 @@ const TOOLTIP_STYLE = {
   whiteSpace: 'pre',
 }
 
-/** Hovering a route line shows its summary, so the map can be read without the sidebar. */
-function routeTooltip(plan: Plan | undefined, { layer, object }: PickingInfo) {
-  if (!plan || layer?.id !== 'routes' || !object) return null
+function restStopTooltip(stop: RestStopDatum) {
+  const what = stop.kind === 'rest' ? '10 h rest' : '30 min break'
+  const lines = [
+    `Route ${stop.routeId} · ${what} at mile ${Math.round(stop.mile)}`,
+    `Stop ${formatTime(stop.arrive)}`,
+    `Leave ${formatTime(stop.leave)}`,
+  ]
+  return { text: lines.join('\n'), style: TOOLTIP_STYLE }
+}
+
+/** Hovering a route line or rest stop shows its summary, so the map reads without the sidebar. */
+function mapTooltip(plan: Plan | undefined, { layer, object }: PickingInfo) {
+  if (!plan || !object) return null
+  if (layer?.id === 'rest-stops') return restStopTooltip(object as RestStopDatum)
+  if (layer?.id !== 'routes') return null
   const route = object as PlannedRoute
   const miles = route.miles_by_level
   const title =
@@ -72,6 +88,9 @@ function routeTooltip(plan: Plan | undefined, { layer, object }: PickingInfo) {
     title,
     `${formatDuration(route.duration_seconds)} · ${formatMiles(route.distance_miles)}`,
     `Arrive ${formatTime(route.arrival)}`,
+    ...(route.rest_stops.length > 0
+      ? [`${formatDuration(route.driving_seconds)} driving + ${describeStops(route.rest_stops)}`]
+      : []),
     `Severe ${Math.round(miles.severe)} mi · High ${Math.round(miles.high)} mi` +
       (miles.no_travel > 0 ? ` · No Travel ${Math.round(miles.no_travel)} mi` : ''),
     `Average risk ${route.avg_risk.toFixed(2)} / 4`,
@@ -136,6 +155,14 @@ export function RouteMap({ plan, heatmap, hour, selectedId, onSelect }: Props) {
     }))
   }, [grid])
 
+  const restStops = useMemo<RestStopDatum[]>(
+    () =>
+      orderedRoutes.flatMap((route) =>
+        route.rest_stops.map((stop) => ({ ...stop, routeId: route.id })),
+      ),
+    [orderedRoutes],
+  )
+
   const layers = [
     new SolidPolygonLayer<Cell>({
       id: 'weather',
@@ -184,12 +211,26 @@ export function RouteMap({ plan, heatmap, hour, selectedId, onSelect }: Props) {
         object && plan && setPopupState({ kind: 'checkpoint', planId: plan.plan_id, cp: object }),
       updateTriggers: { getFillColor: selectedId, getRadius: selectedId },
     }),
+    // Driver breaks and rests: dark markers, so they stand apart from the risk-coloured checkpoints.
+    new ScatterplotLayer<RestStopDatum>({
+      id: 'rest-stops',
+      data: restStops,
+      getPosition: (s) => [s.lon, s.lat],
+      getFillColor: (s) => (s.routeId === selectedId ? [15, 23, 42, 255] : [15, 23, 42, 120]),
+      getRadius: (s) => (s.kind === 'rest' ? 8 : 6),
+      radiusUnits: 'pixels',
+      stroked: true,
+      getLineColor: [255, 255, 255],
+      lineWidthMinPixels: 2,
+      pickable: true,
+      updateTriggers: { getFillColor: selectedId },
+    }),
   ]
 
   return (
     <Map ref={mapRef} initialViewState={INITIAL_VIEW} mapStyle={MAP_STYLE}>
       <NavigationControl position="top-right" />
-      <DeckOverlay layers={layers} getTooltip={(info) => routeTooltip(plan, info)} />
+      <DeckOverlay layers={layers} getTooltip={(info) => mapTooltip(plan, info)} />
       {popup && (
         <Popup
           longitude={popup.kind === 'checkpoint' ? popup.cp.lon : popup.lon}

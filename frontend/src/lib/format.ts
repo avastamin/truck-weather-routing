@@ -38,3 +38,13 @@ export function toLocalInputValue(date: Date): string {
     `T${pad(date.getHours())}:${pad(date.getMinutes())}`
   )
 }
+
+/** "1 break, 1 rest" style summary of a route's stops. */
+export function describeStops(stops: { kind: 'break' | 'rest' }[]): string {
+  const breaks = stops.filter((s) => s.kind === 'break').length
+  const rests = stops.length - breaks
+  const parts = []
+  if (breaks) parts.push(`${breaks} break${breaks > 1 ? 's' : ''}`)
+  if (rests) parts.push(`${rests} rest${rests > 1 ? 's' : ''}`)
+  return parts.join(', ')
+}

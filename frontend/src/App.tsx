@@ -82,6 +82,10 @@ export default function App() {
               {RISK_LABEL[level]}
             </span>
           ))}
+          <span>
+            <span className="swatch stop-swatch" />
+            Break / rest
+          </span>
         </div>
       </main>
     </div>

@@ -1,5 +1,5 @@
 import type { Plan, PlannedRoute } from '../lib/api'
-import { formatDuration, formatMiles, formatTime } from '../lib/format'
+import { describeStops, formatDuration, formatMiles, formatTime } from '../lib/format'
 import { RISK_LABEL, RISK_LEVELS, riskCss } from '../lib/risk'
 
 interface Props {
@@ -70,6 +70,11 @@ function RouteCard({ route, recommended, reason, selected, onSelect }: CardProps
         <span>{formatMiles(route.distance_miles)}</span>
         <span>Arrive {formatTime(route.arrival)}</span>
       </div>
+      {route.rest_stops.length > 0 && (
+        <div className="route-stops">
+          {formatDuration(route.driving_seconds)} driving + {describeStops(route.rest_stops)}
+        </div>
+      )}
       <div className="risk-bar" aria-hidden="true">
         {RISK_LEVELS.map((level) =>
           route.miles_by_level[level] > 0 ? (
