@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ApiError, createPlan, fetchHeatmap, type Heatmap, type Plan, type PlanInput } from './lib/api'
 import { HourSlider } from './components/HourSlider'
+import { LoadingNotice } from './components/LoadingNotice'
 import { PlanForm } from './components/PlanForm'
 import { RouteCards } from './components/RouteCards'
 import { RouteMap } from './components/RouteMap'
@@ -70,11 +71,7 @@ export default function App() {
             error={heatmapQuery.error?.message}
           />
         )}
-        {mutation.isPending && (
-          <div className="map-loading" role="status">
-            <span className="spinner" /> Fetching routes and forecasts…
-          </div>
-        )}
+        {mutation.isPending && <LoadingNotice />}
         <div className="legend" aria-label="Risk levels">
           {RISK_LEVELS.map((level) => (
             <span key={level}>

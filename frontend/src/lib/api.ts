@@ -117,3 +117,8 @@ export function createPlan(input: PlanInput): Promise<Plan> {
 export function fetchHeatmap(planId: string): Promise<Heatmap> {
   return request<Heatmap>(`/heatmap/${planId}`)
 }
+
+/** Free hosting puts the API to sleep when idle; a request on page load starts waking it. */
+export function wakeApi(): void {
+  fetch(`${API_BASE}/health`).catch(() => {})
+}

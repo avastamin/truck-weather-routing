@@ -24,6 +24,25 @@ if not SECRET_KEY:
     SECRET_KEY = "dev-only-insecure-key"
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+# Render tells each service its public hostname.
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
+
+if not DEBUG:
+    # HTTPS is terminated by the host's proxy, which forwards the original scheme.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SECURE_REDIRECT_EXEMPT = [r"^api/health$"]  # the host's health check calls over plain HTTP
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
+
+SILENCED_SYSTEM_CHECKS = [
+    # JSON API with no sessions, cookies or logins, so there is nothing for CSRF to protect.
+    "security.W003",
+    # The API is served from the host's shared domain (*.onrender.com), not one we control, so
+    # HSTS for subdomains and preload lists aren't ours to set.
+    "security.W005",
+    "security.W021",
+]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -39,6 +58,7 @@ MIDDLEWARE = [
     "django.middleware.gzip.GZipMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -47,7 +67,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 # No models: the API is stateless apart from the cache.
 DATABASES = {}
 
-# Redis if REDIS_URL is set, otherwise in-process memory (fine for dev and a single worker).
+# Redis if REDIS_URL is set, otherwise in-process memory. The in-memory cache is per process, and
+# the heatmap reads back the plan stored by an earlier request, so without Redis the server must
+# run as one process (threads are fine). See render.yaml.
 if os.environ.get("REDIS_URL"):
     CACHES = {
         "default": {

@@ -1,0 +1,26 @@
+# Render blueprint for the API. In Render: New > Blueprint, pick this repository.
+services:
+  - type: web
+    name: truck-weather-routing-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # One process with threads: plans are kept in an in-memory cache that the heatmap request
+    # reads back, so every request must reach the same process. Add Redis to scale out.
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 60
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: ROUTING_PROVIDER
+        value: here
+      # Set these two in the Render dashboard:
+      - key: HERE_API_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS # the Vercel URL, e.g. https://your-app.vercel.app
+        sync: false
