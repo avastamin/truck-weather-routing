@@ -118,3 +118,38 @@ def corridor_grid(
                     ) <= reach:
                         cells.add((i, j))
     return [(round(i * step_deg, 4), round(j * step_deg, 4)) for i, j in sorted(cells)]
+
+
+def shared_fraction(
+    path: list[tuple[float, float]],
+    others: list[list[tuple[float, float]]],
+    near_miles: float = 0.3,
+) -> float:
+    """Share of `path`, by distance, that runs within `near_miles` of any of the `others`.
+
+    Points along the other paths are bucketed into a grid about `near_miles` wide, so each
+    point on `path` only has to be compared with the few points in neighbouring buckets.
+    """
+    cell = near_miles / MILES_PER_DEG_LAT
+
+    def bucket(p: tuple[float, float]) -> tuple[int, int]:
+        lat, lon = p
+        return math.floor(lat / cell), math.floor(lon * math.cos(math.radians(lat)) / cell)
+
+    buckets: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for other in others:
+        for p in densify(other, near_miles / 2):
+            buckets.setdefault(bucket(p), []).append(p)
+
+    samples = densify(path, near_miles / 2)
+    if not samples:
+        return 0.0
+    shared = 0
+    for p in samples:
+        bi, bj = bucket(p)
+        neighbours = (
+            q for di in (-1, 0, 1) for dj in (-1, 0, 1) for q in buckets.get((bi + di, bj + dj), ())
+        )
+        if any(haversine_miles(p, q) <= near_miles for q in neighbours):
+            shared += 1
+    return shared / len(samples)

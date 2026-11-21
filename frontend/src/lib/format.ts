@@ -6,15 +6,24 @@ export function formatDuration(seconds: number): string {
   return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
 }
 
+// Times are shown in the browser's timezone, always with the zone name, so "14:05" is never
+// mistaken for local time at the origin.
 const timeFormat = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
   hour: '2-digit',
   minute: '2-digit',
+  timeZoneName: 'short',
 })
 
-/** "Sat 14:05" in the browser's timezone. */
+/** "Sat 14:05 CST" in the browser's timezone. */
 export function formatTime(iso: string): string {
   return timeFormat.format(new Date(iso))
+}
+
+/** Short name of the browser's timezone right now, e.g. "CST" or "GMT+6". */
+export function localZoneName(): string {
+  const part = timeFormat.formatToParts(new Date()).find((p) => p.type === 'timeZoneName')
+  return part?.value ?? 'local time'
 }
 
 export function formatMiles(miles: number): string {

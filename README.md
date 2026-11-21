@@ -223,5 +223,11 @@ Where the brief is ambiguous, the app does the following:
     asks for a more specific name instead of silently routing from a different town. The
     matched names are shown above the route cards, so an ambiguous name like "Springfield"
     is visible.
-17. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
+17. **Times** are shown in the browser's timezone with the zone name (e.g. "Sat 14:00 CST"), and
+    the departure field is read in that same timezone.
+18. **Fewer than 3 routes**: if HERE returns fewer than 3, the app tries via points to either
+    side of the trip. A result only counts as a new route if less than 70% of it runs on roads
+    the existing routes already use; otherwise it's the same road with a detour. Trips with only
+    one sensible road (e.g. Key West → Marathon) show a single route and say so.
+19. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
     response also includes raw wind, gust, rain and snow values per hour for the popup.

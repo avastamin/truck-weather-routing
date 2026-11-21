@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map, NavigationControl, Popup, useControl, type MapRef } from 'react-map-gl/maplibre'
+import type { PickingInfo } from '@deck.gl/core'
 import { MapboxOverlay, type MapboxOverlayProps } from '@deck.gl/mapbox'
 import { PathLayer, ScatterplotLayer, SolidPolygonLayer } from '@deck.gl/layers'
 import { setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Checkpoint, Heatmap, Plan, PlannedRoute } from '../lib/api'
-import { formatTime } from '../lib/format'
+import { formatDuration, formatMiles, formatTime } from '../lib/format'
 import { RISK_LABEL, RISK_LEVELS, RISK_RGB, riskCss } from '../lib/risk'
 
 // MapLibre looks for its worker next to its own file, which isn't where Vite puts it.
@@ -48,6 +49,34 @@ function cellColor(risk: number): [number, number, number, number] {
   if (risk === NO_DATA) return [0, 0, 0, 0]
   const level = RISK_LEVELS[risk]
   return [...RISK_RGB[level], level === 'low' ? LOW_ALPHA : RISK_ALPHA]
+}
+
+const TOOLTIP_STYLE = {
+  background: '#0f172a',
+  color: '#fff',
+  fontSize: '12px',
+  lineHeight: '1.5',
+  padding: '6px 10px',
+  borderRadius: '6px',
+  whiteSpace: 'pre',
+}
+
+/** Hovering a route line shows its summary, so the map can be read without the sidebar. */
+function routeTooltip(plan: Plan | undefined, { layer, object }: PickingInfo) {
+  if (!plan || layer?.id !== 'routes' || !object) return null
+  const route = object as PlannedRoute
+  const miles = route.miles_by_level
+  const title =
+    `Route ${route.id}` + (route.id === plan.recommended_route_id ? ' · Recommended' : '')
+  const lines = [
+    title,
+    `${formatDuration(route.duration_seconds)} · ${formatMiles(route.distance_miles)}`,
+    `Arrive ${formatTime(route.arrival)}`,
+    `Severe ${Math.round(miles.severe)} mi · High ${Math.round(miles.high)} mi` +
+      (miles.no_travel > 0 ? ` · No Travel ${Math.round(miles.no_travel)} mi` : ''),
+    `Average risk ${route.avg_risk.toFixed(2)} / 4`,
+  ]
+  return { text: lines.join('\n'), style: TOOLTIP_STYLE }
 }
 
 function DeckOverlay(props: MapboxOverlayProps) {
@@ -160,7 +189,7 @@ export function RouteMap({ plan, heatmap, hour, selectedId, onSelect }: Props) {
   return (
     <Map ref={mapRef} initialViewState={INITIAL_VIEW} mapStyle={MAP_STYLE}>
       <NavigationControl position="top-right" />
-      <DeckOverlay layers={layers} />
+      <DeckOverlay layers={layers} getTooltip={(info) => routeTooltip(plan, info)} />
       {popup && (
         <Popup
           longitude={popup.kind === 'checkpoint' ? popup.cp.lon : popup.lon}

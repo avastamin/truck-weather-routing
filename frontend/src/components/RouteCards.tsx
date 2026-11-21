@@ -16,6 +16,12 @@ export function RouteCards({ plan, selectedId, onSelect }: Props) {
       <p className="trip-summary">
         {plan.origin.label} → {plan.destination.label}
       </p>
+      {routes.length < 3 && (
+        <p className="route-note">
+          Only {routes.length === 1 ? 'one route' : `${routes.length} distinct routes`} found for
+          this trip.
+        </p>
+      )}
       {plan.no_travel_warning && (
         <div className="banner banner-danger" role="alert">
           Every route has stretches rated No Travel at the expected arrival time. Consider a

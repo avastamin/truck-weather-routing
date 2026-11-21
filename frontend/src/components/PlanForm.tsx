@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { PlanInput } from '../lib/api'
-import { toLocalInputValue } from '../lib/format'
+import { localZoneName, toLocalInputValue } from '../lib/format'
 
 interface Props {
   onSubmit: (input: PlanInput) => void
@@ -9,6 +9,7 @@ interface Props {
 }
 
 const MAX_DAYS_AHEAD = 7
+const ZONE = localZoneName()
 
 function nextFullHour(): Date {
   const d = new Date()
@@ -60,7 +61,7 @@ export function PlanForm({ onSubmit, loading, fieldErrors }: Props) {
         {fieldError('destination')}
       </label>
       <label>
-        Departure
+        Departure ({ZONE})
         <input type="datetime-local" value={departure} onChange={(e) => setDeparture(e.target.value)}
           min={limits.min} max={limits.max} required />
         {fieldError('departure')}

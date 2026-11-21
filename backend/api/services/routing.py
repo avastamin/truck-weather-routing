@@ -14,7 +14,13 @@ from typing import Protocol
 import flexpolyline
 import requests
 
-from api.domain.geo import METERS_PER_MILE, haversine_miles, offset_midpoint
+from api.domain.geo import (
+    METERS_PER_MILE,
+    haversine_miles,
+    offset_midpoint,
+    shared_fraction,
+    simplify,
+)
 from api.domain.types import GeoPoint, Route
 
 LB_TO_KG = 0.45359237
@@ -24,8 +30,11 @@ MAX_ROUTES = 3
 # Sideways offsets (as a fraction of the trip length) tried when the provider returns fewer
 # than 3 routes. Alternating sides gives the best chance of a genuinely different corridor.
 VIA_OFFSETS = (0.15, -0.15, 0.3, -0.3)
-# Routes whose distance and duration are both within 1% of each other count as the same road.
-SAME_ROUTE_TOLERANCE = 0.01
+# A via-point route that shares this much of its length with a route we already have is mostly
+# the same road with a detour (e.g. on a trip with only one highway), not a real alternative.
+# HERE's own alternatives on long trips share at most ~40%.
+MAX_SHARED_FRACTION = 0.7
+SIMPLIFY_DEG = 1e-4
 # HERE scores how well a geocoding result matches the query (0-1). Real places, even with small
 # typos, score above 0.9; nonsense input still gets a weak match (e.g. 0.54), which we reject.
 MIN_GEOCODE_SCORE = 0.7
@@ -66,13 +75,10 @@ def get_routing_provider() -> RoutingProvider:
     raise RoutingError(f"Unknown routing provider: {settings.ROUTING_PROVIDER}")
 
 
-def _same_route(a: Route, b: Route) -> bool:
-    def close(x: float, y: float) -> bool:
-        return abs(x - y) <= SAME_ROUTE_TOLERANCE * max(x, y)
-
-    return close(a.distance_miles, b.distance_miles) and close(
-        a.duration_seconds, b.duration_seconds
-    )
+def _is_real_alternative(candidate: Route, routes: list[Route]) -> bool:
+    others = [simplify(r.coords, SIMPLIFY_DEG) for r in routes]
+    shared = shared_fraction(simplify(candidate.coords, SIMPLIFY_DEG), others)
+    return shared < MAX_SHARED_FRACTION
 
 
 def get_routes(
@@ -86,7 +92,7 @@ def get_routes(
 
     Providers often return fewer alternatives than asked for on long trips. In that case we ask
     again with a via point pushed off to one side of the straight line between the endpoints,
-    and keep the result if it isn't just one of the routes we already have.
+    and keep the result only if it mostly uses different roads from the routes we have.
     """
     routes = list(provider.routes(origin, destination, departure, load_lb))[:MAX_ROUTES]
     for fraction in VIA_OFFSETS:
@@ -100,7 +106,7 @@ def get_routes(
             candidate = provider.routes(origin, destination, departure, load_lb, via=via)[0]
         except RoutingError:
             continue  # e.g. the via point landed somewhere unroutable; try the next one
-        if not any(_same_route(candidate, r) for r in routes):
+        if _is_real_alternative(candidate, routes):
             routes.append(candidate)
     return [replace(r, id=chr(ord("A") + i)) for i, r in enumerate(routes)]
 

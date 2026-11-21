@@ -1,6 +1,13 @@
 import pytest
 
-from api.domain.geo import corridor_grid, densify, haversine_miles, offset_midpoint, simplify
+from api.domain.geo import (
+    corridor_grid,
+    densify,
+    haversine_miles,
+    offset_midpoint,
+    shared_fraction,
+    simplify,
+)
 
 
 def test_haversine_one_degree_of_latitude():
@@ -80,3 +87,22 @@ class TestCorridorGrid:
         one = corridor_grid([self.PATH], 0.25, 15)
         two = corridor_grid([self.PATH, self.PATH], 0.25, 15)
         assert one == two
+
+
+class TestSharedFraction:
+    ROAD = [(35.0, -101.0), (35.0, -100.0)]
+
+    def test_same_road_is_fully_shared(self):
+        assert shared_fraction(self.ROAD, [self.ROAD]) == 1.0
+
+    def test_parallel_road_five_miles_away_shares_nothing(self):
+        parallel = [(35.0725, -101.0), (35.0725, -100.0)]  # ~5 mi north
+        assert shared_fraction(parallel, [self.ROAD]) == 0.0
+
+    def test_route_that_leaves_halfway_shares_about_half(self):
+        half = [(35.0, -101.0), (35.0, -100.5), (35.5, -100.0)]
+        assert shared_fraction(half, [self.ROAD]) == pytest.approx(0.4, abs=0.1)
+
+    def test_any_of_several_routes_counts(self):
+        north = [(35.5, -101.0), (35.5, -100.0)]
+        assert shared_fraction(self.ROAD, [north, self.ROAD]) == 1.0
