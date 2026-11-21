@@ -9,9 +9,9 @@ checkpoint for the time the truck is expected to reach it, classifies the weathe
 recommends a route. The map shows the routes, the checkpoints and a weather heatmap along the
 trip corridor with a 0–48 hour slider.
 
-> **Status: early scaffold.** The backend and frontend projects are set up, the routing adapter
-> (HERE) is written, and spikes against HERE and Open-Meteo are in place. Next: the risk,
-> sampling and recommendation logic, then the API endpoints, the map UI and the heatmap.
+> **Status: in progress.** The routing adapter (HERE) and the core logic are written and tested:
+> risk classification, checkpoint sampling with ETAs, forecast interpolation and route ranking.
+> Next: the API endpoints, the map UI and the heatmap.
 
 ## Stack
 
@@ -32,6 +32,10 @@ backend/
     domain/               pure logic, no Django imports
       types.py            Route and GeoPoint data shapes
       geo.py              distance helpers
+      risk.py             thresholds and load rules -> risk level per checkpoint
+      sampling.py         checkpoints every N miles, miles covered, ETA at each
+      forecast.py         unit conversion, value at an exact time between forecast hours
+      recommend.py        miles per risk level, ranking, recommendation reason
     services/
       routing.py          routing provider adapter (HERE) -> Route
     views.py              API endpoints (currently GET /api/health)
@@ -123,8 +127,9 @@ Where the brief is ambiguous, the app does the following:
 3. **Wind** is classified on sustained wind (`wind_speed_10m`). Gusts are shown in the
    checkpoint popup but don't affect the risk level.
 4. **Checkpoint risk** is the worst of wind (after load rules), rain and snow.
-5. **Miles per checkpoint**: each checkpoint covers half the gap to each neighbour; the first
-   and last checkpoints also cover the stretch to the route's start and end.
+5. **Checkpoints** are placed at mile 0, N, 2N, … and at the destination, so the weather at
+   departure and arrival is always checked. Each checkpoint covers half the gap to each
+   neighbour, so the miles covered add up to the route length.
 6. **No Travel** isn't in the brief's ranking order. Any route with No Travel miles ranks below
    every route without them (then by fewest No Travel miles), and the UI shows a warning.
 7. **Average risk** is mile-weighted, with Low = 0, Moderate = 1, High = 2, Severe = 3,
@@ -145,5 +150,6 @@ Where the brief is ambiguous, the app does the following:
     otherwise the API returns a clear error.
 14. **Rounding before ranking**: risk miles are rounded to 0.1 mi and average risk to 0.01
     before comparing, so near-equal values count as ties and the later tie-breakers apply.
+    If routes are still tied after travel time, the routing provider's order decides.
 15. **Heatmap load**: the heatmap's combined risk uses the plan's load weight. The heatmap
     response also includes raw wind, gust, rain and snow values per hour for the popup.
