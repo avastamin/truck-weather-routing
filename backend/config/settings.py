@@ -101,3 +101,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # External providers
 ROUTING_PROVIDER = os.environ.get("ROUTING_PROVIDER", "here")
 HERE_API_KEY = os.environ.get("HERE_API_KEY", "")
+# Optional. Without it the free Open-Meteo API is used, which is rate limited per IP address.
+OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "")

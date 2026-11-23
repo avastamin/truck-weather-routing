@@ -17,6 +17,8 @@ import requests
 from api.domain.forecast import to_inches
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Paid plans use their own host and an API key; free use is limited per IP address.
+OPEN_METEO_CUSTOMER_URL = "https://customer-api.open-meteo.com/v1/forecast"
 HOURLY_VARS = ("wind_speed_10m", "wind_gusts_10m", "rain", "showers", "snowfall")
 GRID_STEP_DEG = 0.1
 BATCH_SIZE = 100  # keeps the GET URL a reasonable length
@@ -90,13 +92,20 @@ def parse_location(loc: dict[str, Any]) -> HourlySeries:
 
 
 class OpenMeteoClient:
-    def __init__(self, cache=None, session: requests.Session | None = None):
+    def __init__(
+        self, cache=None, session: requests.Session | None = None, api_key: str | None = None
+    ):
         if cache is None:
             from django.core.cache import cache as django_cache
 
             cache = django_cache
+        if api_key is None:
+            from django.conf import settings
+
+            api_key = settings.OPEN_METEO_API_KEY
         self.cache = cache
         self.session = session or requests.Session()
+        self.api_key = api_key
 
     def hourly(
         self, points: list[tuple[float, float]], start: datetime, end: datetime
@@ -133,8 +142,12 @@ class OpenMeteoClient:
             "start_hour": start.strftime("%Y-%m-%dT%H:%M"),
             "end_hour": end.strftime("%Y-%m-%dT%H:%M"),
         }
+        url = OPEN_METEO_URL
+        if self.api_key:
+            url = OPEN_METEO_CUSTOMER_URL
+            params["apikey"] = self.api_key
         try:
-            resp = self.session.get(OPEN_METEO_URL, params=params, timeout=REQUEST_TIMEOUT_S)
+            resp = self.session.get(url, params=params, timeout=REQUEST_TIMEOUT_S)
         except requests.RequestException as exc:
             raise WeatherError(f"Weather service unreachable ({type(exc).__name__}).") from None
         try:

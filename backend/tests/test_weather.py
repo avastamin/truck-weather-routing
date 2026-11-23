@@ -49,10 +49,12 @@ class FakeSession:
 
     def __init__(self, status=200, body=None, error=None):
         self.calls = []
+        self.urls = []
         self.status, self.body, self.error = status, body, error
 
     def get(self, url, params, timeout):
         self.calls.append(params)
+        self.urls.append(url)
         if self.error:
             raise self.error
         if self.body is not None:
@@ -102,14 +104,16 @@ def test_grid_key_snaps_to_tenth_of_a_degree():
 class TestClient:
     def test_nearby_points_share_one_forecast(self, cache):
         session = FakeSession()
-        client = OpenMeteoClient(cache=cache, session=session)
+        client = OpenMeteoClient(cache=cache, api_key="", session=session)
         result = client.hourly([(32.78, -96.80), (32.81, -96.79), (35.2, -101.8)], START, END)
         assert set(result) == {(32.8, -96.8), (35.2, -101.8)}
         assert session.calls[0]["latitude"] == "32.8,35.2"
 
     def test_request_covers_whole_hours_around_the_trip(self, cache):
         session = FakeSession()
-        OpenMeteoClient(cache=cache, session=session).hourly([(32.8, -96.8)], START, END)
+        OpenMeteoClient(cache=cache, api_key="", session=session).hourly(
+            [(32.8, -96.8)], START, END
+        )
         params = session.calls[0]
         assert params["start_hour"] == "2026-11-22T08:00"
         assert params["end_hour"] == "2026-11-22T11:00"
@@ -120,36 +124,59 @@ class TestClient:
         monkeypatch.setattr(weather, "BATCH_SIZE", 2)
         session = FakeSession()
         points = [(30.0 + i, -100.0) for i in range(5)]
-        result = OpenMeteoClient(cache=cache, session=session).hourly(points, START, END)
+        result = OpenMeteoClient(cache=cache, api_key="", session=session).hourly(
+            points, START, END
+        )
         assert len(session.calls) == 3
         assert len(result) == 5
 
     def test_second_request_is_served_from_cache(self, cache):
         session = FakeSession()
-        client = OpenMeteoClient(cache=cache, session=session)
+        client = OpenMeteoClient(cache=cache, api_key="", session=session)
         client.hourly([(32.8, -96.8)], START, END)
         client.hourly([(32.8, -96.8)], START, END)
         assert len(session.calls) == 1
 
     def test_only_uncached_points_are_fetched(self, cache):
         session = FakeSession()
-        client = OpenMeteoClient(cache=cache, session=session)
+        client = OpenMeteoClient(cache=cache, api_key="", session=session)
         client.hourly([(32.8, -96.8)], START, END)
         client.hourly([(32.8, -96.8), (35.2, -101.8)], START, END)
         assert session.calls[1]["latitude"] == "35.2"
 
     def test_api_error_reason_is_passed_on(self, cache):
         body = {"error": True, "reason": "Parameter 'start_hour' is out of allowed range"}
-        client = OpenMeteoClient(cache=cache, session=FakeSession(status=400, body=body))
+        client = OpenMeteoClient(
+            cache=cache, api_key="", session=FakeSession(status=400, body=body)
+        )
         with pytest.raises(WeatherError, match="out of allowed range"):
             client.hourly([(32.8, -96.8)], START, END)
 
     def test_network_failure_becomes_weather_error(self, cache):
         session = FakeSession(error=requests.ConnectionError("boom"))
         with pytest.raises(WeatherError, match="unreachable"):
-            OpenMeteoClient(cache=cache, session=session).hourly([(32.8, -96.8)], START, END)
+            OpenMeteoClient(cache=cache, api_key="", session=session).hourly(
+                [(32.8, -96.8)], START, END
+            )
 
     def test_single_location_object_response_is_accepted(self, cache):
         session = FakeSession(body=location())
-        result = OpenMeteoClient(cache=cache, session=session).hourly([(32.8, -96.8)], START, END)
+        result = OpenMeteoClient(cache=cache, api_key="", session=session).hourly(
+            [(32.8, -96.8)], START, END
+        )
         assert list(result) == [(32.8, -96.8)]
+
+    def test_free_api_is_used_without_a_key(self, cache):
+        session = FakeSession()
+        OpenMeteoClient(cache=cache, session=session, api_key="").hourly(
+            [(32.8, -96.8)], START, END
+        )
+        assert session.urls == [weather.OPEN_METEO_URL]
+        assert "apikey" not in session.calls[0]
+
+    def test_api_key_switches_to_the_customer_api(self, cache):
+        session = FakeSession()
+        client = OpenMeteoClient(cache=cache, session=session, api_key="k123")
+        client.hourly([(32.8, -96.8)], START, END)
+        assert session.urls == [weather.OPEN_METEO_CUSTOMER_URL]
+        assert session.calls[0]["apikey"] == "k123"
