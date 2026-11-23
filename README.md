@@ -137,9 +137,10 @@ more processes, add Redis and set `REDIS_URL`.
 detected automatically) and set `VITE_API_BASE_URL` to the API's URL plus `/api`, e.g.
 `https://truck-weather-routing-api.onrender.com/api`.
 
-Render's free tier stops the API after 15 idle minutes, and the next request takes up to a
-minute while it starts. The frontend pings the API when the page opens to start that early,
-and says so if planning takes longer than usual.
+The hosted API uses Render's Starter instance (0.5 CPU), which stays running. On the free
+instance type it also works, but it stops after 15 idle minutes, the next request takes up to
+a minute while it starts, and long-trip heatmaps take several times longer. The frontend pings
+the API when the page opens to start it early, and says so if planning takes longer than usual.
 
 ## API
 
@@ -277,8 +278,9 @@ Where the brief is ambiguous, the app does the following:
   "try again in a minute" message. Re-planning the same trip (e.g. with a different load) is
   served from the cache. The hosted app uses a paid key (`OPEN_METEO_API_KEY`), which has no
   per-minute, hourly or daily limits.
-- **Plans are kept for 2 hours**, in memory. After that, or after the free API instance
-  restarts, the heatmap for an old plan returns 404 and the trip has to be planned again.
+- **Plans are kept for 2 hours**, in memory. After that, or after the API restarts (for
+  example on a deploy), the heatmap for an old plan returns 404 and the trip has to be
+  planned again.
 - **Hours of service are simplified**: the driver is assumed to start fresh, and weekly
   (60/70-hour) limits and real parking locations for rests aren't modelled.
 - **Forecast resolution.** Checkpoint weather comes from a 0.1° grid (about 7 miles) and the

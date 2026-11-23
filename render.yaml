@@ -4,7 +4,7 @@ services:
     name: truck-weather-routing-api
     runtime: python
     rootDir: backend
-    plan: free
+    plan: starter # 0.5 CPU and no sleeping when idle; "free" also works, more slowly
     buildCommand: pip install -r requirements.txt
     # One process with threads: plans are kept in an in-memory cache that the heatmap request
     # reads back, so every request must reach the same process. Add Redis to scale out.
