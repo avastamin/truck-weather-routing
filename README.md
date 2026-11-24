@@ -9,20 +9,19 @@ checkpoint for the time the truck is expected to reach it, classifies the weathe
 recommends a route. The map shows the routes, the checkpoints and a weather heatmap along the
 trip corridor with a 0–48 hour slider.
 
-> **Status: in progress.** Planning works end to end: real HERE truck routes, Open-Meteo
-> forecasts at each checkpoint's ETA, risk levels, a recommendation, a map with route cards and
-> checkpoint details, and a weather grid along the corridor with a 0–48 hour slider.
-> Next: deployment.
+- **Live app:** https://truck-weather-routing-umber.vercel.app
+- **API:** https://truck-weather-routing-api-clu3.onrender.com/api/health
+- **Walkthrough video:** https://www.loom.com/share/02094f227b1b476d91930e490c429fc7
 
 ## Stack
 
-| Part      | Choice                                                            |
-| --------- | ----------------------------------------------------------------- |
-| Backend   | Django 5 + Django REST Framework, Django cache (Redis optional)   |
+| Part      | Choice                                                                      |
+| --------- | --------------------------------------------------------------------------- |
+| Backend   | Django 5 + Django REST Framework, Django cache (Redis optional)             |
 | Routing   | HERE Routing v8 (truck mode, gross weight, alternatives), behind an adapter |
-| Geocoding | HERE Geocoding & Search v7                                        |
-| Weather   | Open-Meteo forecast API (no key)                                  |
-| Frontend  | React + TypeScript + Vite, MapLibre GL, deck.gl, TanStack Query  |
+| Geocoding | HERE Geocoding & Search v7                                                  |
+| Weather   | Open-Meteo forecast API (paid key optional)                                 |
+| Frontend  | React + TypeScript + Vite, MapLibre GL, deck.gl, TanStack Query             |
 
 ## Project layout
 
@@ -70,16 +69,16 @@ python manage.py runserver  # http://127.0.0.1:8000/api/health
 
 Environment variables (see `backend/.env.example`):
 
-| Variable               | Purpose                                                  |
-| ---------------------- | -------------------------------------------------------- |
-| `DJANGO_DEBUG`         | `true` for local development                             |
-| `DJANGO_SECRET_KEY`    | required when debug is off                               |
-| `DJANGO_ALLOWED_HOSTS` | comma-separated hosts                                    |
-| `CORS_ALLOWED_ORIGINS` | frontend origin(s), e.g. `http://localhost:5173`         |
-| `REDIS_URL`            | optional; in-memory cache is used if unset               |
-| `ROUTING_PROVIDER`     | `here` (only provider so far)                            |
+| Variable               | Purpose                                                        |
+| ---------------------- | -------------------------------------------------------------- |
+| `DJANGO_DEBUG`         | `true` for local development                                   |
+| `DJANGO_SECRET_KEY`    | required when debug is off                                     |
+| `DJANGO_ALLOWED_HOSTS` | comma-separated hosts                                          |
+| `CORS_ALLOWED_ORIGINS` | frontend origin(s), e.g. `http://localhost:5173`               |
+| `REDIS_URL`            | optional; in-memory cache is used if unset                     |
+| `ROUTING_PROVIDER`     | `here` (only provider so far)                                  |
 | `HERE_API_KEY`         | HERE Platform API key. Backend only, never sent to the browser |
-| `OPEN_METEO_API_KEY`   | optional paid Open-Meteo key; the free API is used if unset |
+| `OPEN_METEO_API_KEY`   | optional paid Open-Meteo key; the free API is used if unset    |
 
 ### Frontend
 
@@ -120,7 +119,7 @@ and whether the load weight changes the routes. Raw responses are saved to
 
 The API runs on Render and the frontend on Vercel, both from this repository.
 
-**API (Render).** `render.yaml` describes the service: in Render choose *New > Blueprint* and
+**API (Render).** `render.yaml` describes the service: in Render choose _New > Blueprint_ and
 pick this repository. Then set these environment variables on the service:
 
 - `HERE_API_KEY`
@@ -135,7 +134,7 @@ more processes, add Redis and set `REDIS_URL`.
 
 **Frontend (Vercel).** Import the repository, set the root directory to `frontend` (Vite is
 detected automatically) and set `VITE_API_BASE_URL` to the API's URL plus `/api`, e.g.
-`https://truck-weather-routing-api.onrender.com/api`.
+`https://truck-weather-routing-api-clu3.onrender.com/api`.
 
 The hosted API uses Render's Starter instance (0.5 CPU), which stays running. On the free
 instance type it also works, but it stops after 15 idle minutes, the next request takes up to
@@ -189,11 +188,11 @@ one request stays under 600 locations.
 
 Errors come back as `{"error": "..."}`, plus `"fields"` for invalid input:
 
-| Status | When                                                                        |
-| ------ | --------------------------------------------------------------------------- |
+| Status | When                                                                           |
+| ------ | ------------------------------------------------------------------------------ |
 | 400    | invalid input, departure outside the allowed window, place not found, no route |
-| 404    | heatmap requested for an unknown or expired plan                            |
-| 502    | the routing or weather service failed                                       |
+| 404    | heatmap requested for an unknown or expired plan                               |
+| 502    | the routing or weather service failed                                          |
 
 ## Risk rules (from the brief)
 
